@@ -1,9 +1,8 @@
 import os
 import threading
 import subprocess
-import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from yt_dlp import YoutubeDL, DownloadError
+from concurrent.futures import ThreadPoolExecutor
+from yt_dlp import YoutubeDL
 from time import sleep
 from flask import Flask
 
@@ -28,13 +27,42 @@ def is_valid_url(url):
     except Exception:
         return False
 
-def download_video(url, ydl_opts, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            with YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            log_downloaded(url)
-            return
+def download_video(url, ydl_opts):
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        print("Error downloading", url, ":", e)
+
+def main():
+    threading.Thread(target=run_web, daemon=True).start()
+    auto_update_ytdlp()
+    
+    if os.path.exists('links.txt'):
+        with open('links.txt', 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+        
+        urls = [url for url in urls if is_valid_url(url)]
+        os.makedirs('downloads', exist_ok=True)
+
+        ydl_opts = {
+            'quiet': True,
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'best',
+            'ignoreerrors': True,
+        }
+
+        print("Starting download of", len(urls), "items...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for url in urls:
+                executor.submit(download_video, url, ydl_opts)
+        print("Processing complete!")
+    
+    while True:
+        sleep(60)
+
+if __name__ == '__main__':
+    main()            return
         except DownloadError as e:
             print(f"⚠️ Attempt {attempt + 1} failed for {url}: {e}")
             sleep(2 ** attempt)

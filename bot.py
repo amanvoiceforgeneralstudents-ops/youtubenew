@@ -77,7 +77,7 @@ def main():
 
 if __name__ == '__main__':
     main()
-            with YoutubeDL(ydl_opts) as ydl:
+        with YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             log_downloaded(url)
             return

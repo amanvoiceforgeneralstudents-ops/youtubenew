@@ -43,13 +43,11 @@ def download_video(url, ydl_opts, max_retries=3):
 
 def log_downloaded(url):
     with open('downloaded.txt', 'a') as f:
-        f.write(url + '
-')
+        f.write(url)
 
 def log_failed(url):
     with open('failed.txt', 'a') as f:
-        f.write(url + '
-')
+        f.write(url)
 
 def load_urls(file_path=None):
     urls = []

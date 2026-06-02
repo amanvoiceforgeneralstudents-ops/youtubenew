@@ -1,10 +1,8 @@
 import os
-import argparse
 import threading
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from yt_dlp import YoutubeDL
-from yt_dlp.utils import DownloadError
 from time import sleep
 from flask import Flask
 
@@ -20,20 +18,59 @@ def run_web():
 
 # === 🔄 Auto-update yt-dlp ===
 def auto_update_ytdlp():
-    print("🔄 Checking for yt-dlp update...")
     subprocess.run(["python3", "-m", "pip", "install", "--upgrade", "yt-dlp"], stdout=subprocess.DEVNULL)
 
 # === 🧪 Validate URL ===
 def is_valid_url(url):
     try:
         with YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
+            ydl.extract_info(url, download=False)
         return True
     except Exception:
         return False
 
 # === 📤 Download Function ===
-def download_video(url, ydl_opts, max_retries=3):
+def download_video(url, ydl_opts):
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        print(f"Error downloading {url}: {e}")
+
+# === 🧠 Main ===
+def main():
+    # 1. Start Web Server in background
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # 2. Main Logic
+    auto_update_ytdlp()
+    
+    if os.path.exists('links.txt'):
+        with open('links.txt', 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+        
+        urls = [url for url in urls if is_valid_url(url)]
+        os.makedirs('downloads', exist_ok=True)
+
+        ydl_opts = {
+            'quiet': True,
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'best',
+            'ignoreerrors': True,
+        }
+
+        print(f"🚀 Starting download of {len(urls)} items...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for url in urls:
+                executor.submit(download_video, url, ydl_opts)
+        print("\n✅ Processing complete!")
+    
+    # Keep script running
+    while True:
+        sleep(60)
+
+if __name__ == '__main__':
+    main()
     for attempt in range(max_retries):
         try:
             with YoutubeDL(ydl_opts) as ydl:

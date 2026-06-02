@@ -1,13 +1,15 @@
 import os
 import threading
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
-from yt_dlp import YoutubeDL
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from yt_dlp import YoutubeDL, DownloadError
 from time import sleep
 from flask import Flask
 
 # === 🌐 Dummy Web Server for Render ===
 app = Flask(__name__)
+
 @app.route('/')
 def home():
     return "Bot is running!"
@@ -29,12 +31,105 @@ def is_valid_url(url):
     except Exception:
         return False
 
-# === 📤 Download Function ===
-def download_video(url, ydl_opts):
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-    except Exception as e:
+# === 📤 Download Function with Retry ===
+def download_video(url, ydl_opts, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            log_downloaded(url)
+            return
+        except DownloadError as e:
+            print(f"⚠️ Attempt {attempt + 1} failed for {url}: {e}")
+            sleep(2 ** attempt)
+    log_failed(url)
+    print(f"❌ Skipped after {max_retries} failed attempts: {url}")
+
+# === 📄 Logging ===
+def log_downloaded(url):
+    with open('downloaded.txt', 'a') as f:
+        f.write(url + '
+')
+
+def log_failed(url):
+    with open('failed.txt', 'a') as f:
+        f.write(url + '
+')
+
+# === 📁 Load URLs ===
+def load_urls(file_path=None):
+    urls = []
+    if file_path and os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+    return urls
+
+# === 🧵 Threaded Download ===
+def threaded_download(urls, ydl_opts, threads):
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = {executor.submit(download_video, url, ydl_opts): url for url in urls}
+        for future in as_completed(futures):
+            future.result()
+
+# === 🧠 Main ===
+def main():
+    # Start Web Server in background
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # Auto-update yt-dlp
+    auto_update_ytdlp()
+    
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="YouTube Downloader PRO")
+    parser.add_argument('--audio', action='store_true', help='Download audio only (MP3)')
+    parser.add_argument('--file', type=str, help='Path to file containing URLs', default='links.txt')
+    parser.add_argument('--dir', type=str, default='downloads', help='Output directory')
+    parser.add_argument('--threads', type=int, default=2, help='Number of parallel downloads')
+    args = parser.parse_args()
+
+    # Load URLs
+    urls = load_urls(args.file)
+    if not urls:
+        print("❌ No URLs provided.")
+        return
+    
+    # Validate URLs
+    urls = [url for url in urls if is_valid_url(url)]
+    if not urls:
+        print("❌ All URLs invalid.")
+        return
+    
+    # Create output directory
+    os.makedirs(args.dir, exist_ok=True)
+
+    # Build options
+    output_template = os.path.join(args.dir, '%(title)s.%(ext)s')
+    ydl_opts = {
+        'quiet': True,
+        'outtmpl': output_template,
+        'format': 'bestaudio/best' if args.audio else 'bestvideo+bestaudio/best',
+        'ignoreerrors': True,
+        'noplaylist': False,
+        'merge_output_format': 'mp4',
+        'download_archive': 'archive.txt',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }] if args.audio else []
+    }
+
+    print(f"🚀 Starting download of {len(urls)} item(s) using {args.threads} thread(s)...")
+    threaded_download(urls, ydl_opts, args.threads)
+    print("
+✅ All downloads complete!")
+    
+    # Keep script running
+    while True:
+        sleep(60)
+
+if __name__ == '__main__':
+    main()    except Exception as e:
         print(f"Error downloading {url}: {e}")
 
 # === 🧠 Main ===

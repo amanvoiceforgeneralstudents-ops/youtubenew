@@ -55,6 +55,7 @@ def log_failed(url):
     with open('failed.txt', 'a') as f:
         f.write(url + '
 ')
+')
 
 # === 📁 Load URLs ===
 def load_urls(file_path=None):

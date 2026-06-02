@@ -6,20 +6,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 from time import sleep
-from datetime import datetime
+from flask import Flask
+
+# === 🌐 Dummy Web Server for Render ===
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 # === 🔄 Auto-update yt-dlp ===
 def auto_update_ytdlp():
     print("🔄 Checking for yt-dlp update...")
     subprocess.run(["python3", "-m", "pip", "install", "--upgrade", "yt-dlp"], stdout=subprocess.DEVNULL)
-
-# === 📊 Progress Hook ===
-def progress_hook(d):
-    if d['status'] == 'downloading':
-        percent = d.get('_percent_str', '').strip()
-        speed = d.get('_speed_str', '').strip()
-        eta = d.get('_eta_str', '').strip()
-        print(f"📥 {percent} @ {speed}, ETA: {eta}", end='\r')
 
 # === 🧪 Validate URL ===
 def is_valid_url(url):
@@ -34,6 +36,47 @@ def is_valid_url(url):
 def download_video(url, ydl_opts, max_retries=3):
     for attempt in range(max_retries):
         try:
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return
+        except DownloadError as e:
+            sleep(2 ** attempt)
+
+# === 🧠 Main ===
+def main():
+    # 1. Start Web Server in background
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # 2. Main Logic
+    auto_update_ytdlp()
+    
+    # Read from links.txt automatically instead of input()
+    if os.path.exists('links.txt'):
+        with open('links.txt', 'r') as f:
+            urls = [line.strip() for line in f if line.strip()]
+        
+        urls = [url for url in urls if is_valid_url(url)]
+        os.makedirs('downloads', exist_ok=True)
+
+        ydl_opts = {
+            'quiet': True,
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'best',
+            'ignoreerrors': True,
+        }
+
+        print(f"🚀 Starting download of {len(urls)} items...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for url in urls:
+                executor.submit(download_video, url, ydl_opts)
+        print("\n✅ Processing complete!")
+    
+    # Keep script running
+    while True:
+        sleep(60)
+
+if __name__ == '__main__':
+    main()
             with YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             log_downloaded(url)

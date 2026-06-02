@@ -103,8 +103,7 @@ def main():
 
     print(f"🚀 Starting download of {len(urls)} item(s) using {args.threads} thread(s)...")
     threaded_download(urls, ydl_opts, args.threads)
-    print("
-✅ All downloads complete!")
+    print("✅ All downloads complete!")
     
     while True:
         sleep(60)

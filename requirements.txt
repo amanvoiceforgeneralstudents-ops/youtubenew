@@ -2,3 +2,4 @@ yt-dlp>=2024.4.9
 rich>=13.7.1
 tqdm>=4.66.2
 flask
+python-telegram-bot
